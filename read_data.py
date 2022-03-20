@@ -1,13 +1,25 @@
 import logging
-from model import Example
+from model import ExchangeRate, MarketPrice
 from extensions import session
 
 
 logging.getLogger().setLevel(logging.INFO)
 
-# This is a sample how to read from the database.
+# read exchange_rate database
+def fetch_exchange_rates(date):
+    logging.info("Fetching rates from database for date: {}".format(date))
+    try:
+        exchange_rate_data = session.query(ExchangeRate.exchange_rates, ExchangeRate.date).filter(ExchangeRate.date == date.strftime("%Y-%m-%d")).all()
+        return exchange_rate_data
+    except:
+        return []
 
-if __name__ == '__main__':
-    rows = session.query(Example).all()
-    logging.info(f'We have {len(rows)} rows in Example table')
+# read market_price database
+def fetch_market_data(symbol, start_date, end_date):
+    logging.info("Fetching market price from database for stock symbol: {}".format(symbol))
+    try:
+        stock_price_data = session.query(MarketPrice.name, MarketPrice.rate, MarketPrice.date).filter(MarketPrice.name == symbol, MarketPrice.date >=start_date, MarketPrice.date <= end_date).all()
+        return stock_price_data
+    except:
+        return []
 

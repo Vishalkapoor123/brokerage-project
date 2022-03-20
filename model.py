@@ -9,11 +9,11 @@ Base = declarative_base()
 class MarketPrice(Base):
     __tablename__ = 'market_price'
     # id = Column(String, primary_key=True)
-    name = Column(String, primary_key=True)
-    rate = Column(Integer)
+    symbol = Column(String, primary_key=True)
+    price = Column(Integer)
     date = Column(String,primary_key=True)
     
 class ExchangeRate(Base):
     __tablename__ = 'exchange_rate'
-    rates = Column(String)
+    exchange_rates = Column(String)
     date = Column(String, primary_key=True)
