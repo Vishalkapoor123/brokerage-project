@@ -32,4 +32,8 @@ def test_fetch_market_data_should_return_list():
 def test_get_data_should_return_success_status():
     get_data_return = load_data.get_data(symbol, currency, start_date, end_date)
     assert get_data_return["status"] == "success"
+
+def test_stock_price_should_persist_in_database_after_fetching():
+    get_market_price_data = read_data.fetch_market_data(symbol, start_date, end_date)
+    assert len(get_market_price_data)>0
         
