@@ -115,7 +115,7 @@ def get_data(symbol, currency, start_date, end_date):
                 return return_data(df_url, currency)
             else:
                 if(res.status_code == 500):
-                    logging.error("Server is not reachable, sorry for the inconvinience")
+                    logging.error("Internal server error, sorry for the inconvinience")
                     # return {"status":500, "info":"server error"}
                     return {"status":"fail"}
                 elif(res.status_code == 422):
@@ -185,8 +185,7 @@ def input_and_validate():
         return {"status":"failed"}
     else:
         #Get data from databases/APIs
-        get_data(symbol, currency, start_date, end_date)
-        return {"status":"success"}      
+        return get_data(symbol, currency, start_date, end_date)
             
 
 # Main method

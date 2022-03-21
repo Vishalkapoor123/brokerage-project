@@ -1,15 +1,14 @@
-from json import load
-from unicodedata import name
-
-from pandas import DataFrame
+from pytest import Mark
 import load_data, read_data
 from datetime import datetime
+from extensions import session
+from model import MarketPrice, ExchangeRate
 
 # Standard inputs
 symbol ="AAPL"
 currency = "INR"
-start = "2022-03-10"
-end = "2022-03-20"
+start = "2022-03-09"
+end = "2022-03-10"
 start_date= datetime.strptime(start, "%Y-%m-%d")
 end_date=datetime.strptime(end, "%Y-%m-%d")
 
@@ -36,4 +35,19 @@ def test_get_data_should_return_success_status():
 def test_stock_price_should_persist_in_database_after_fetching():
     get_market_price_data = read_data.fetch_market_data(symbol, start_date, end_date)
     assert len(get_market_price_data)>0
+    
+def test_integration_test_data_should_persist_in_database():
+    check_data_for_dates = read_data.fetch_market_data(symbol, start_date, end_date)
+    if(len(check_data_for_dates) >0):
+        data = session.query(MarketPrice).filter(MarketPrice.symbol == symbol, MarketPrice.date>=start_date, MarketPrice.date<=end_date).delete(synchronize_session=False)
+        session.commit()
+    get_data_return = load_data.get_data(symbol, currency, start_date, end_date)
+    check_data_for_dates_after_running_scipt = read_data.fetch_market_data(symbol, start_date, end_date)
+    assert len(check_data_for_dates_after_running_scipt) > 0
+    
+
+    
+
+        
+    
         
