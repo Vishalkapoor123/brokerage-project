@@ -17,7 +17,8 @@ def test_wrong_stock_symbol_should_throw_error():
     assert get_data_return["status"] == "fail"
     
 def test_exchange_rate():
-    exchange_rate_return = load_data.get_exchange_rate(start_date, currency)
+    start_date_exchange = start_date.strftime("%Y-%m-%d")
+    exchange_rate_return = load_data.get_exchange_rate(start_date_exchange, currency)
     assert exchange_rate_return > 0
     
 def test_fetch_exchange_rate_should_return_list():
@@ -39,9 +40,9 @@ def test_stock_price_should_persist_in_database_after_fetching():
 def test_integration_test_data_should_persist_in_database():
     check_data_for_dates = read_data.fetch_market_data(symbol, start_date, end_date)
     if(len(check_data_for_dates) >0):
-        data = session.query(MarketPrice).filter(MarketPrice.symbol == symbol, MarketPrice.date>=start_date, MarketPrice.date<=end_date).delete(synchronize_session=False)
+        session.query(MarketPrice).filter(MarketPrice.symbol == symbol, MarketPrice.date>=start_date, MarketPrice.date<=end_date).delete(synchronize_session=False)
         session.commit()
-    get_data_return = load_data.get_data(symbol, currency, start_date, end_date)
+    load_data.get_data(symbol, currency, start_date, end_date)
     check_data_for_dates_after_running_scipt = read_data.fetch_market_data(symbol, start_date, end_date)
     assert len(check_data_for_dates_after_running_scipt) > 0
     

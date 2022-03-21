@@ -12,53 +12,57 @@ from read_data import fetch_exchange_rates, fetch_market_data
 logging.getLogger().setLevel(logging.INFO)
 
 # Standard inputs
-access_key_market = "68c5706c455f39f717a8bd04a1b2e8f0"
+access_key_market = "019e2a6c1de5a911695d119972b224cd"
 access_key_exchange = "353c659b37318718363726fa29e05532"
-base_currency_exchange = "EUR"
 base_currency_market = "USD"
 url_exchange_rates = "http://api.exchangeratesapi.io/v1"
 url_market_price = "http://api.marketstack.com/v1"
 stock_price_feature = "eod" #closing price
 
 
-# Get exchange rate by dates
+# Get exchange rate for a particular date
 def get_exchange_rate(date, currency):
+    
     #Create a placeholder dataframe with datetime index
-    df = pd.DataFrame(index = [date.strftime("%Y-%m-%d")])
-    df.index.name = "date"
+    df_exchange_rate = pd.DataFrame(index = [date])
+    df_exchange_rate.index.name = "date"
     
     #Fetch details from the Database
     data = fetch_exchange_rates(date)
     
     #If not found hit the API and fetch from the servers
     if(len(data) == 0):
-        logging.info("Getting Exchange rates via server for date = {}".format(date.strftime("%Y-%m-%d")))
+        logging.info("Fetching exchange rates from server for date: {}".format(date))
         try:
-            exchange_rate_url = "{base_url}/{date}?access_key={access_key}".format(base_url = url_exchange_rates, date = date.strftime("%Y-%m-%d"), access_key = access_key_exchange)
+            exchange_rate_url = "{base_url}/{date}?access_key={access_key}".format(base_url = url_exchange_rates, date = date, access_key = access_key_exchange)
             res = requests.get(exchange_rate_url)
-            resp = res.json()
+            response_json = res.json()
             if(res.status_code == 200):
-                df.insert(0, "exchange_rates", json.dumps(resp["rates"]))
-                df.insert(1, "base_currency", base_currency_exchange)
-                df.to_sql("exchange_rate", engine, if_exists = 'append')
-                temp = resp["rates"][currency]
-            return temp/resp["rates"][base_currency_market]
+                exchange_rates = response_json["rates"]
+                df_exchange_rate.insert(0, "exchange_rates", json.dumps(exchange_rates))
+                df_exchange_rate.insert(1, "base_currency", response_json["base"])
+                
+                # Save exchange rates into exchange table
+                df_exchange_rate.to_sql("exchange_rate", engine, if_exists = 'append')
+                
+                conversion_ratio = exchange_rates[currency]
+            return conversion_ratio/exchange_rates[base_currency_market]
         except:
             logging.error("Server not reachable")
             return -1
+        finally:
+            #sleep for half second due to API limitations
+            sleep(0.5)
     else:
-        temp = json.loads(data[0][0])
-        return temp[currency]/temp[base_currency_market]
+        # Take from database and return conversion ratio
+        exchange_rates = json.loads(data[0][0])
+        return exchange_rates[currency]/exchange_rates[base_currency_market]
     
+    
+# Dataframe currency conversion  
 def return_data(dataframe, currency):
-    
-    # If required currency is base currency then return the same dataframe
-    if(currency == base_currency_market):
-        logging.info("Results: \n {} \n".format(dataframe))
-        return {"status":"success"}
-    
-    # get exchange rate and convert into required currency
-    else:
+    # If required currency is not same as base currency then convert else do nothing
+    if(currency != base_currency_market):
         #iterate through dataframe
         for i, row in dataframe.iterrows():
             ex_rate = get_exchange_rate(i, currency)
@@ -66,53 +70,74 @@ def return_data(dataframe, currency):
                 # Change price to converted price
                 converted_price =  round(float(row["price"])*float(ex_rate), 2)
                 dataframe.at[i, 'price'] = converted_price
+                dataframe.at[i,"currency"] = currency
             else:
                 logging.error("Internal service error")
                 return None
-            #sleep for 1 second due to API limitations
-            sleep(1)
             
-        logging.info("Results: \n {} \n".format(dataframe))
-        return {"status":"success"}
+    logging.info("Results: \n {} \n".format(dataframe))
+    return {"status":"success"}
         
 
+# Main method
 def get_data(symbol, currency, start_date, end_date):
     logging.info("Getting details...")
-    timeseries = pd.date_range(start_date, end_date)
-    df = pd.DataFrame(index = timeseries)
-    df.index.name = "date"
-    df.insert(0, column = "price", value = None)
-    df_database = df.copy()
-    df_url = df.copy()
     
-    data = fetch_market_data(symbol, start_date, end_date)
+    #create a placeholder dataframe with datetimeindex
+    timeseries = pd.date_range(start = start_date, end = end_date)
+    df_market = pd.DataFrame(index = timeseries.strftime("%Y-%m-%d"))
+    df_market.index.name = "date"
+    df_market.insert(0, column = "price", value = None)
+    
+    # creating database and server copies of dataframe 
+    df_market_database = df_market.copy()
+    df_market_server = df_market.copy()
+    
+    #fetch data from database first and check if requirement can be satisfied
+    data = fetch_market_data(symbol, start_date.strftime("%Y-%m-%d"), end_date)
     for i in range(len(data)):
-        df_database.loc[data[i][2]] = data[i][1]
-    df_size = df_database.dropna().size
-    df_database = df_database.dropna()
-    df_database.insert(1, "symbol", symbol)
+        df_market_database.loc[data[i][2]] = data[i][1]
+    df_market_database = df_market_database.dropna()
+    df_size = df_market_database.size
+    df_market_database.insert(1, "symbol", symbol)
+    
+    # If dataframe size is less than days delta then fetch details from the server
     if(df_size < (end_date-start_date).days+1):
         logging.info("Fetching details from the server...")
         try:
-            url = "{base_url}/{feature}?access_key={access_key}&symbols={symbol}&date_from={start}&date_to={end}".format(base_url = url_market_price, feature = stock_price_feature, access_key = access_key_market, symbol = symbol, start = start_date, end = end_date)
+            offset = 0
+            limit = 1000
+            total_data = []
+            url = "{base_url}/{feature}?access_key={access_key}&symbols={symbol}&date_from={start}&date_to={end}&limit={limit}".format(base_url = url_market_price, feature = stock_price_feature, access_key = access_key_market, symbol = symbol, start = start_date, end = end_date, limit = limit)
             res = requests.get(url)
             resp = res.json()
+            total_data = res.json()["data"]
+            
+            #Handling large data cases when data is more than API limit
+            while(resp["pagination"]["total"] > resp["pagination"]["limit"] + resp["pagination"]["offset"]):
+                offset += limit
+                url = "{base_url}/{feature}?access_key={access_key}&symbols={symbol}&date_from={start}&date_to={end}&limit={limit}&offset={offset}".format(base_url = url_market_price, feature = stock_price_feature, access_key = access_key_market, symbol = symbol, start = start_date, end = end_date, limit = limit, offset = offset)
+                res = requests.get(url)
+                resp = res.json()
+                total_data += resp["data"]
             logging.info("Processing your request") 
             if(res.status_code == 200):
-                count = resp["pagination"]["count"]
+                count = len(total_data)
                 for i in range(count):
-                    temp = resp["data"][i]
-                    temp["date"] = temp["date"].split("T")[0]
-                    df_url.loc[str(datetime.strptime(temp["date"], "%Y-%m-%d").strftime("%Y-%m-%d"))] = temp["close"]
-                df_url = df_url.replace([None], -1)
-                df_url.insert(1, "symbol", symbol)
-                df_url.insert(2, "currency", base_currency_market)
-                df3 = pd.concat([df_database, df_url])
-                df3 = df3[~df3.index.duplicated(keep = False)]
+                    temp = total_data[i]
+                    temp["date"] = datetime.strptime(temp["date"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%d") # date conversion into YYYY-MM-DD format
+                    df_market_server.loc[temp["date"]] = temp["close"]
+                df_market_server = df_market_server.replace([None], -1)
+                df_market_server.insert(1, "symbol", symbol)
+                df_market_server.insert(2, "currency", base_currency_market)
+                
+                # Take differences from database and server and persist new items that into database 
+                df_diff = pd.concat([df_market_database, df_market_server])
+                df_diff = df_diff[~df_diff.index.duplicated(keep = False)]
                 # Store data into the database for market_price
-                df3.to_sql("market_price", engine, if_exists = 'append')
-                df_url = df_url.loc[df_url["price"] >= 0]
-                return return_data(df_url, currency)
+                df_diff.to_sql("market_price", engine, if_exists = 'append')
+                df_market_server = df_market_server.loc[df_market_server["price"] >= 0]
+                return return_data(df_market_server, currency)
             else:
                 if(res.status_code == 500):
                     logging.error("Internal server error, sorry for the inconvinience")
@@ -129,54 +154,56 @@ def get_data(symbol, currency, start_date, end_date):
             logging.error("Server not reachable")
             return {"status":"fail"}
     else:
-        df_database = df_database.loc[df_database["price"] >= 0]
-        return return_data(df_database, currency)
+        # Data is present in the database hence use that data
+        df_market_database.insert(2, "currency", base_currency_market)
+        df_market_database = df_market_database.loc[df_market_database["price"] >= 0]
+        return return_data(df_market_database, currency)
    
             
 def input_and_validate():
-    logging.info("Verifying your inputs")
-    symbol = "AAPL"
-    currency = "INR"
-    start = "2022-03-06"
-    end = "2022-03-10"
+    logging.info("Verifying your inputs...")
+    # symbol = "AAPL"
+    # currency = "INR"
+    # start = "2022-03-02"
+    # end = "2022-03-10"
     
     ############# commnd line argumanets ####################
-    # parser = argparse.ArgumentParser(description = 'Market Data')
-    # parser.add_argument(" -- symbol", type = str)
-    # parser.add_argument(" -- currency", type = str)
-    # parser.add_argument(" -- start", type = str)
-    # parser.add_argument(" -- end", type = str)
-    # args = parser.parse_args()
+    parser = argparse.ArgumentParser(description = 'Market Data')
+    parser.add_argument("--symbol", type = str)
+    parser.add_argument("--currency", type = str)
+    parser.add_argument("--start", type = str)
+    parser.add_argument("--end", type = str)
+    args = parser.parse_args()
     
-    # symbol = args.symbol
-    # currency = args.currency
-    # start = args.start
-    # end = args.end
+    symbol = args.symbol
+    currency = args.currency
+    start = args.start
+    end = args.end
     
     #########################################################
     #Input
     # symbol = input("Enter Stock symbol: ")
     #Input validation
     if(symbol is None or len(symbol.strip()) == 0):
-        logging.error("Error in symbol, Please enter correct symbol of stock")
+        logging.error("Stock symbol is required, please enter correct symbol of stock")
         return {"status":"failed"}
     
     # currency = input("Enter Currency Symbol: ")
     #Input validation
     if(currency is None or len(currency.strip()) == 0):
-        logging.error("Error in currency, Please enter correct symbol of currency")
+        logging.error("Currency is required, please enter correct symbol of currency")
         return {"status":"failed"}
     # start = input("Enter Start date: ")
     # end = input("Enter end date: ")
     try:
         start_date = datetime.strptime(start, "%Y-%m-%d")
     except:
-        logging.error("Error in start date, Start date should be in format of YYYY-MM-DD")
+        logging.error("Start is required and it should be in format of YYYY-MM-DD")
         return {"status":"failed"}
     try: 
         end_date = datetime.strptime(end, "%Y-%m-%d")
     except:
-        logging.error("End date should be in format of YYYY-MM-DD")
+        logging.error("End is required and it should be in format of YYYY-MM-DD")
         return {"status":"failed"}
     
     #Date validation

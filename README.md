@@ -11,4 +11,7 @@ In terminal run - python load.py --symbol=<symbol> --currency=<currency> --start
 Run Tests:
 In terminal run - python -m pytest test.py
 
+##################################
+This program accepts stock symbol, currency symbol, start date and end date as input params as command line arguments and returns the closing price details for that stock converted into desired currency for all the dates from start date and end date both inclusive.
+
 
