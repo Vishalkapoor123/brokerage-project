@@ -12,8 +12,10 @@ class MarketPrice(Base):
     symbol = Column(String, primary_key=True)
     price = Column(Integer)
     date = Column(String,primary_key=True)
+    currency = Column(String)
     
 class ExchangeRate(Base):
     __tablename__ = 'exchange_rate'
+    base_currency = Column(String)
     exchange_rates = Column(String)
     date = Column(String, primary_key=True)

@@ -39,6 +39,7 @@ def get_exchange_rate(date, currency):
             resp = res.json()
             if(res.status_code == 200):
                 df.insert(0, "exchange_rates", json.dumps(resp["rates"]))
+                df.insert(1, "base_currency", base_currency_exchange)
                 df.to_sql("exchange_rate", engine, if_exists = 'append')
                 temp = resp["rates"][currency]
             return temp/resp["rates"][base_currency_market]
@@ -53,9 +54,8 @@ def return_data(dataframe, currency):
     
     # If required currency is base currency then return the same dataframe
     if(currency == base_currency_market):
-        dataframe.insert(2, "currency", currency)
-        logging.info(dataframe)
-        return dataframe
+        logging.info("Results: \n {} \n".format(dataframe))
+        return {"status":"success"}
     
     # get exchange rate and convert into required currency
     else:
@@ -72,7 +72,6 @@ def return_data(dataframe, currency):
             #sleep for 1 second due to API limitations
             sleep(1)
             
-        dataframe.insert(2, "currency", currency)
         logging.info("Results: \n {} \n".format(dataframe))
         return {"status":"success"}
         
@@ -98,7 +97,7 @@ def get_data(symbol, currency, start_date, end_date):
             url = "{base_url}/{feature}?access_key={access_key}&symbols={symbol}&date_from={start}&date_to={end}".format(base_url = url_market_price, feature = stock_price_feature, access_key = access_key_market, symbol = symbol, start = start_date, end = end_date)
             res = requests.get(url)
             resp = res.json()
-            logging.info("Processing your request")
+            logging.info("Processing your request") 
             if(res.status_code == 200):
                 count = resp["pagination"]["count"]
                 for i in range(count):
@@ -107,6 +106,7 @@ def get_data(symbol, currency, start_date, end_date):
                     df_url.loc[str(datetime.strptime(temp["date"], "%Y-%m-%d").strftime("%Y-%m-%d"))] = temp["close"]
                 df_url = df_url.replace([None], -1)
                 df_url.insert(1, "symbol", symbol)
+                df_url.insert(2, "currency", base_currency_market)
                 df3 = pd.concat([df_database, df_url])
                 df3 = df3[~df3.index.duplicated(keep = False)]
                 # Store data into the database for market_price
