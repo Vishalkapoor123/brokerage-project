@@ -162,10 +162,6 @@ def get_data(symbol, currency, start_date, end_date):
             
 def input_and_validate():
     logging.info("Verifying your inputs...")
-    # symbol = "AAPL"
-    # currency = "INR"
-    # start = "2022-03-02"
-    # end = "2022-03-10"
     
     ############# commnd line argumanets ####################
     parser = argparse.ArgumentParser(description = 'Market Data')
@@ -181,20 +177,15 @@ def input_and_validate():
     end = args.end
     
     #########################################################
-    #Input
-    # symbol = input("Enter Stock symbol: ")
     #Input validation
     if(symbol is None or len(symbol.strip()) == 0):
         logging.error("Stock symbol is required, please enter correct symbol of stock")
         return {"status":"failed"}
     
-    # currency = input("Enter Currency Symbol: ")
-    #Input validation
     if(currency is None or len(currency.strip()) == 0):
         logging.error("Currency is required, please enter correct symbol of currency")
         return {"status":"failed"}
-    # start = input("Enter Start date: ")
-    # end = input("Enter end date: ")
+
     try:
         start_date = datetime.strptime(start, "%Y-%m-%d")
     except:
