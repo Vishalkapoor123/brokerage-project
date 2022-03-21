@@ -1,18 +1,19 @@
 from datetime import datetime
 import logging
-from extensions import engine
+from extensions import session, engine
 import requests
 import pandas as pd
 import json
 import argparse
 from time import sleep
+from model import ExchangeRate
 from read_data import fetch_exchange_rates, fetch_market_data
 
 # logging initialization
 logging.getLogger().setLevel(logging.INFO)
 
 # Standard inputs
-access_key_market = "019e2a6c1de5a911695d119972b224cd"
+access_key_market = "8174ee2aaf9c429c8c9fb5a7648d3e05"
 access_key_exchange = "353c659b37318718363726fa29e05532"
 base_currency_market = "USD"
 url_exchange_rates = "http://api.exchangeratesapi.io/v1"
@@ -29,9 +30,13 @@ def get_exchange_rate(date, currency):
     
     #Fetch details from the Database
     data = fetch_exchange_rates(date)
+    conversion_json = {}
+    # To check if required currency conversion is present or not
+    if(len(data)>0):
+        conversion_json = json.loads(data[0][0])
     
-    #If not found hit the API and fetch from the servers
-    if(len(data) == 0):
+    #If not found and currency conversion not present hit the API and fetch from the servers
+    if(len(data) == 0 or currency not in conversion_json.keys()):
         logging.info("Fetching exchange rates from server for date: {}".format(date))
         try:
             exchange_rate_url = "{base_url}/{date}?access_key={access_key}".format(base_url = url_exchange_rates, date = date, access_key = access_key_exchange)
@@ -39,14 +44,21 @@ def get_exchange_rate(date, currency):
             response_json = res.json()
             if(res.status_code == 200):
                 exchange_rates = response_json["rates"]
-                df_exchange_rate.insert(0, "exchange_rates", json.dumps(exchange_rates))
-                df_exchange_rate.insert(1, "base_currency", response_json["base"])
-                
-                # Save exchange rates into exchange table
-                df_exchange_rate.to_sql("exchange_rate", engine, if_exists = 'append')
-                
-                conversion_ratio = exchange_rates[currency]
-            return conversion_ratio/exchange_rates[base_currency_market]
+                #append required currency converion along with base_currency conversion ratio
+                conversion_json[currency] = exchange_rates[currency]
+                if(base_currency_market not in conversion_json.keys()):
+                    conversion_json[base_currency_market] = exchange_rates[base_currency_market]
+                df_exchange_rate.insert(0, "exchange_rates", json.dumps(conversion_json))
+                df_exchange_rate.insert(1, "base_currency", response_json["base"])                   
+                # Save/Update exchange rates into exchange table
+                if(len(data)>0):
+                    session.query(ExchangeRate).filter(ExchangeRate.date == date).update({ExchangeRate.exchange_rates: json.dumps(conversion_json)})
+                else:
+                    temp = ExchangeRate(date = date, exchange_rates = json.dumps(conversion_json), base_currency=response_json["base"])
+                    session.add(temp)
+                session.commit()
+                conversion_ratio = conversion_json[currency]
+            return conversion_ratio/conversion_json[base_currency_market]
         except:
             logging.error("Server not reachable")
             return -1
@@ -127,7 +139,9 @@ def get_data(symbol, currency, start_date, end_date):
                     temp = total_data[i]
                     temp["date"] = datetime.strptime(temp["date"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%d") # date conversion into YYYY-MM-DD format
                     df_market_server.loc[temp["date"]] = temp["close"]
-                df_market_server = df_market_server.replace([None], -1)
+                    
+                # For untouched "None" prices market was close hence replace that with -1 to keep track and avoid hitting server API next time 
+                df_market_server["price"] = df_market_server["price"].replace([None], -1)
                 df_market_server.insert(1, "symbol", symbol)
                 df_market_server.insert(2, "currency", base_currency_market)
                 
@@ -136,6 +150,8 @@ def get_data(symbol, currency, start_date, end_date):
                 df_diff = df_diff[~df_diff.index.duplicated(keep = False)]
                 # Store data into the database for market_price
                 df_diff.to_sql("market_price", engine, if_exists = 'append')
+                
+                # Remove dates when market was closed, the reason "None" was replaced with -1 above
                 df_market_server = df_market_server.loc[df_market_server["price"] >= 0]
                 return return_data(df_market_server, currency)
             else:
@@ -171,8 +187,8 @@ def input_and_validate():
     parser.add_argument("--end", type = str)
     args = parser.parse_args()
     
-    symbol = args.symbol
-    currency = args.currency
+    symbol = args.symbol.upper()
+    currency = args.currency.upper()
     start = args.start
     end = args.end
     
