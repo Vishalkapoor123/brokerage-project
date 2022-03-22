@@ -2,7 +2,7 @@ from pytest import Mark
 import load_data, read_data
 from datetime import datetime
 from extensions import session
-from model import MarketPrice, ExchangeRate
+from model import MarketPrice
 
 # Standard inputs
 symbol ="AAPL"
