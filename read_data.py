@@ -1,6 +1,7 @@
 import logging
 from model import ExchangeRate, MarketPrice
 from extensions import session
+import json
 
 
 logging.getLogger().setLevel(logging.INFO)
@@ -22,4 +23,7 @@ def fetch_market_data(symbol, start_date, end_date):
         return stock_price_data
     except:
         return []
+    
+if __name__=="__main__":
+    fetch_exchange_rates("2022-03-15")
 
