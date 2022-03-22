@@ -140,7 +140,7 @@ def get_data(symbol, currency, start_date, end_date):
                     temp["date"] = datetime.strptime(temp["date"], "%Y-%m-%dT%H:%M:%S%z").strftime("%Y-%m-%d") # date conversion into YYYY-MM-DD format
                     df_market_server.loc[temp["date"]] = temp["close"]
                     
-                # For untouched "None" prices market was close hence replace that with -1 to keep track and avoid hitting server API next time 
+                # For untouched "None" prices market was close hence replace that with -1 to keep track and avoid hitting server API next time for these dates
                 df_market_server["price"] = df_market_server["price"].replace([None], -1)
                 df_market_server.insert(1, "symbol", symbol)
                 df_market_server.insert(2, "currency", base_currency_market)
