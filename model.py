@@ -8,7 +8,6 @@ Base = declarative_base()
 
 class MarketPrice(Base):
     __tablename__ = 'market_price'
-    # id = Column(String, primary_key=True)
     symbol = Column(String, primary_key=True)
     price = Column(Integer)
     date = Column(String,primary_key=True)
